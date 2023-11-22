@@ -1,0 +1,64 @@
+rm(list=ls())
+setwd("C:/Users/IN336441/OneDrive - INFONAVIT/Documentos/Infonavit/Presentaciones DG/2023/11.Noviembre/IMSS/csv/conjunto_de_datos")
+
+if (!require(pacman)) install.packages("pacman") 
+library(pacman)
+p_load("tidyverse","leaflet","dplyr","sp","sf", "htmlwidgets", "shiny")
+
+#Cargamos tabla de oficinas del IMSS
+
+imss <- read_csv("231121_INEGI_DENUE.csv", locale = locale(encoding = "ISO-8859-1"))
+
+#Cargamos empleo del IMSS a nivel municipal
+
+empleo_imss<- read_csv("EAP_ESTIMACIONES_PEA_OCU_INF_2022_T1.csv", locale = locale(encoding = "ISO-8859-1"))
+
+#Cargamos ubicación de los CESI
+
+cesi<-read_csv("DirectorioCesis.csv", locale = locale(encoding = "ISO-8859-1"))
+
+#Cargamos shapefile
+mex<- st_read("00mun.shp")
+mex <- st_transform(mex, 4326)
+
+
+#Creamos columna con empleo formal en la tabla del shapefile
+
+mapamex <- left_join(mex, empleo_imss, by = c("CVEGEO"="LLAVE"))
+mapamex <- st_transform(mapamex, 4326)
+
+#Crear mapa leaflet
+
+cortes<-colorQuantile(c("#641E16","#922B21", "#C0392B","#D98880","#FADBD8"),n=5,
+                      domain =mapamex$FORMALES)
+mapamex<-mapamex%>%
+  mutate(colores=cortes(FORMALES))
+
+labels<-sprintf("%s; Trabajadores Formales: %g",
+                mapamex$NOMGEO,mapamex$FORMALES) 
+
+mapaimss<- leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  setView(-99.12766,19.42847,4) %>%
+  addCircleMarkers(data=imss,label = imss$nom_estab,lng=~longitud,lat=~latitud,
+                   clusterOptions = markerClusterOptions(),
+                   color="#27AE60",
+                   popup=~municipio,
+                   group="Establecimientos IMSS") %>%
+  addCircleMarkers(data=cesi,label = cesi$Tipo,lng=~Longitud,lat=~Latitud,
+                   clusterOptions = markerClusterOptions(),
+                   color="#9A7D0A",
+                   group="Establecimientos Infonavit") %>%
+  addLegend(position="bottomleft", colors=c("#641E16","#922B21", "#C0392B","#D98880","#FADBD8"), labels=c("20% con más empleo formal", "Cuarto quintil", "Tercer quintil", "Segundo quintil", "20% con menos empleo formal")) %>%
+  addPolygons(data=mapamex,weight=1,color="#540b0e",
+              fillColor=~ colores,
+              fillOpacity = 0.9,
+              label=labels,
+              group="Empleo formal") %>%
+  addLayersControl(overlayGroups = c("Establecimientos IMSS", "Establecimientos Infonavit", "Empleo formal"),
+                   options=layersControlOptions(collapsed=FALSE))
+
+mapaimss
+
+saveWidget(mapaimss, file="C:/Users/IN336441/OneDrive - INFONAVIT/Documentos/Infonavit/Presentaciones DG/2023/11.Noviembre/IMSS/MapaImssMapaIMSS.html", selfcontained=FALSE)
+
